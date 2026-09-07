@@ -1,0 +1,9 @@
+{
+    "name": "LeadSync",
+    "slug": "lead-sync",
+    "description": "Synchronizes OrderLemon demo customers to NIZU leads.",
+    "version": "1.0.0",
+    "author": "OrderLemon",
+    "enabled": true,
+    "dependencies": []
+}

@@ -15,11 +15,11 @@ declare(strict_types=1);
 
 return [
     // --- Microservice identity (mirror of v1 config.php) ---
-    'ms_name' => 'weather',
+    'ms_name' => 'orderlemon-nizu-sync',
     'ms_version' => '2.0.0',
-    'ms_description' => 'Weather API',
-    'ms_author' => 'John Doe',
-    'ms_author_email' => 'joe@example.com',
+    'ms_description' => 'OrderLemon to NIZU lead synchronization service',
+    'ms_author' => 'OrderLemon',
+    'ms_author_email' => '',
     'ms_license' => 'MIT',
     'ms_documentation' => 'https://github.com/ruvenss/pmsrapi/wiki',
     'ms_github_repo' => 'https://github.com/ruvenss/pmsrapi/',
@@ -27,7 +27,7 @@ return [
     // --- Where the secret config JSON lives (shared with v1) ---
     // Default: parent directory of the project root, named after the service.
     // Absolute paths are recommended in production.
-    'secrets_path' => dirname(__DIR__, 2) . '/weather.json',
+    'secrets_path' => dirname(__DIR__, 2) . '/configs/orderlemon-nizu.json',
 
     // --- Runtime-managed webhook registry (built/rebuilt via REST) ---
     // A SEPARATE file from the secret config: it is writable at runtime, so it

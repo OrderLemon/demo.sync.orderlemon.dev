@@ -12,3 +12,4 @@ v1/webhooks/queue.lock
 v1/webhooks/logs/*.json
 .megaignore
 Icon
+.claude/project.md
