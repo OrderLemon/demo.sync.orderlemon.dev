@@ -56,8 +56,13 @@ final class LeadSyncService
                         continue;
                     }
 
-                    $this->nizu->createLead($this->buildFields($customer, $phone, $shopId));
+                    $clientId = $this->nizu->createLead($this->buildFields($customer, $phone, $shopId));
                     $summary['inserted']++;
+                    $this->logger->info('Lead inserted', [
+                        'shop_id' => $shopId,
+                        'phone' => $phone,
+                        'client_id' => $clientId,
+                    ]);
                 } catch (NizuApiException $exception) {
                     $summary['failed']++;
                     $this->logger->error('Lead sync record failed', [
@@ -96,65 +101,52 @@ final class LeadSyncService
     private function buildFields(array $customer, string $phone, int $shopId): array
     {
         $weazyo = in_array($shopId, (array) $this->config->secret('sync.weazyo_shop_ids', [101]), true);
-        $firstName = $this->stringValue($customer['first_name'] ?? null);
-        $lastName = $this->stringValue($customer['last_name'] ?? null);
-        $email = $this->stringValue($customer['email'] ?? null)
-            ?? $this->stringValue($customer['shop_email'] ?? null);
-        $address = $this->buildAddress($customer);
+        $companyId = $customer['shop_company_id'] ?? null;
 
-        $fields = [
-            ['field' => 'client_id', 'value' => (int) $this->config->secret('nizu.client_id', 8)],
-            ['field' => 'user_type', 'value' => 'client'],
-            ['field' => 'is_admin', 'value' => 1],
-            ['field' => 'role_id', 'value' => 0],
-            ['field' => 'first_name', 'value' => $firstName],
-            ['field' => 'last_name', 'value' => $lastName],
-            ['field' => 'status', 'value' => 'active'],
-            ['field' => 'email', 'value' => $email],
+        return [
+            ['field' => 'company_name', 'value' => $this->stringValue($customer['full_name'] ?? null)],
+            ['field' => 'type', 'value' => 'person'],
+            ['field' => 'address', 'value' => $this->stringValue($customer['street'] ?? null)],
+            ['field' => 'city', 'value' => $this->stringValue($customer['city'] ?? null)],
+            ['field' => 'state', 'value' => $this->stringValue($customer['region'] ?? null)],
+            ['field' => 'zip', 'value' => $this->stringValue($customer['cp'] ?? null)],
+            ['field' => 'country', 'value' => $this->stringValue($customer['country_name'] ?? null)],
+            ['field' => 'country_code', 'value' => $this->stringValue($customer['country'] ?? null)],
+            ['field' => 'created_date', 'value' => 'NOW()'],
+            ['field' => 'website', 'value' => ""],
             ['field' => 'phone', 'value' => $phone],
-            ['field' => 'is_primary_contact', 'value' => 1],
-            ['field' => 'disable_login', 'value' => 0],
-            ['field' => 'address', 'value' => $address],
-            ['field' => 'language', 'value' => $this->stringValue($customer['language'] ?? null) ?? 'english'],
-            ['field' => 'enable_web_notification', 'value' => 1],
-            ['field' => 'enable_email_notification', 'value' => 1],
+            ['field' => 'starred_by', 'value' => ""],
+            ['field' => 'group_ids', 'value' => $weazyo ? 2 : ""],
+            ['field' => 'deleted', 'value' => 0],
+            ['field' => 'is_lead', 'value' => 1],
+            ['field' => 'lead_status_id', 'value' => 1],
             ['field' => 'owner_id', 'value' => $weazyo ? 42 : 2],
+            ['field' => 'created_by', 'value' => 1],
+            ['field' => 'sort', 'value' => 0],
             ['field' => 'lead_source_id', 'value' => $weazyo ? 182 : 181],
+            ['field' => 'last_lead_status', 'value' => ""],
+            ['field' => 'client_migration_date', 'value' => 'NOW()'],
+            ['field' => 'vat_number', 'value' => $this->stringValue($customer['vat_number'] ?? "")],
+            ['field' => 'gst_number', 'value' => ""],
+            ['field' => 'stripe_customer_id', 'value' => ""],
+            ['field' => 'stripe_card_ending_digit', 'value' => 0],
+            ['field' => 'currency', 'value' => 'EUR'],
+            ['field' => 'currency_symbol', 'value' => '€'],
+            ['field' => 'disable_online_payment', 'value' => 0],
+            ['field' => 'labels', 'value' => $companyId !== "" ? 'ol_company_id: ' . $companyId : ""],
+            ['field' => 'client_type', 'value' => ""],
+            ['field' => 'client_electronic_address', 'value' => ""],
+            ['field' => 'managers', 'value' => ""],
         ];
-
-        if ($weazyo) {
-            $fields[] = ['field' => 'group_ids', 'value' => 2];
-        }
-
-        return $fields;
-    }
-
-    /**
-     * @param array<string, mixed> $customer
-     */
-    private function buildAddress(array $customer): ?string
-    {
-        $parts = array_filter([
-            $this->stringValue($customer['street'] ?? null)
-                ?? $this->stringValue($customer['shop_street'] ?? null),
-            $this->stringValue($customer['cp'] ?? null)
-                ?? $this->stringValue($customer['shop_zip'] ?? null),
-            $this->stringValue($customer['city'] ?? null)
-                ?? $this->stringValue($customer['shop_city'] ?? null),
-            $this->stringValue($customer['country'] ?? null)
-                ?? $this->stringValue($customer['shop_country'] ?? null),
-        ]);
-
-        return $parts === [] ? null : implode(', ', $parts);
     }
 
     private function stringValue(mixed $value): ?string
     {
         if (!is_string($value)) {
-            return null;
+            return "";
         }
 
         $value = trim($value);
-        return $value === '' ? null : $value;
+        return $value === '' ? "" : $value;
     }
 }

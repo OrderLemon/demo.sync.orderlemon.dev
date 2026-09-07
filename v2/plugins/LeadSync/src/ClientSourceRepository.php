@@ -28,17 +28,19 @@ final class ClientSourceRepository
 
         $table = 'clients_' . $shopId;
         $sql = sprintf(
-            'SELECT shop.phonenumber, shop.email AS shop_email, shop.full_name, '
-            . 'shop.country AS shop_country, shop.city AS shop_city, '
-            . 'shop.zip AS shop_zip, shop.street AS shop_street, '
+            'SELECT shop.phonenumber, shop.email AS shop_email, shop.full_name, shop.business_vat AS vat_number, '
             . 'shared.email, shared.language, shared.first_name, shared.last_name, '
-            . 'shared.country, shared.city, shared.cp, shared.region, shared.street '
+            . 'shared.country, shared.city, shared.cp, shared.region, shared.street, '
+            . 'countries.long_name AS country_name, '
+            . 'shops.company_id AS shop_company_id '
             . 'FROM `%s` AS shop '
-            . 'LEFT JOIN `clients_data` AS shared ON shared.phonenumber = shop.phonenumber',
+            . 'LEFT JOIN `clients_data` AS shared ON shared.phonenumber = shop.phonenumber '
+            . 'LEFT JOIN `countries` ON countries.iso2 = shared.country '
+            . 'LEFT JOIN `shops` ON shops.id = ?',
             $table,
         );
 
-        foreach ($this->connection->select($sql) as $customer) {
+        foreach ($this->connection->select($sql, [$shopId]) as $customer) {
             yield $customer;
         }
     }

@@ -36,12 +36,16 @@ final class NizuApiClient
     /**
      * @param list<array{field: string, value: int|string|null}> $fields
      */
-    public function createLead(array $fields): void
+    public function createLead(array $fields): ?string
     {
-        $this->request('POST', [
-            'module' => 'users',
+        $response = $this->request('POST', [
+            'module' => 'clients',
             'data' => $fields,
         ]);
+
+        $this->assertNotFailed($response, 'lead creation');
+
+        return $this->createdClientId($response);
     }
 
     /**
@@ -49,7 +53,7 @@ final class NizuApiClient
      */
     private function request(string $method, array $payload): array
     {
-        $baseUrl = rtrim((string) $this->config->secret('nizu.base_url', 'https://api.nizu.io/v2'), '/');
+        $baseUrl = (string) $this->config->secret('nizu.base_url');
         $token = (string) $this->config->secret('nizu.token', '');
         $timeout = max(1, (int) $this->config->secret('nizu.timeout', 10));
         $maxRetries = max(1, (int) $this->config->secret('nizu.max_retries', 3));
@@ -59,6 +63,19 @@ final class NizuApiClient
         }
 
         $encodedPayload = json_encode($payload, JSON_THROW_ON_ERROR);
+
+        $headers = [
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ];
+
+        $redactedHeaders = array_map(
+            static fn(string $header) => str_starts_with($header, 'Authorization:')
+                ? 'Authorization: Bearer ***'
+                : $header,
+            $headers,
+        );
 
         for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
             $handle = curl_init($baseUrl);
@@ -72,11 +89,7 @@ final class NizuApiClient
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_CONNECTTIMEOUT => $timeout,
                     CURLOPT_TIMEOUT => $timeout,
-                    CURLOPT_HTTPHEADER => [
-                        'Authorization: Bearer ' . $token,
-                        'Content-Type: application/json',
-                        'Accept: application/json',
-                    ],
+                    CURLOPT_HTTPHEADER => $headers,
                     CURLOPT_POSTFIELDS => $encodedPayload,
                 ]);
 
@@ -91,6 +104,7 @@ final class NizuApiClient
                 try {
                     /** @var array<string, mixed> $decoded */
                     $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+
                     return $decoded;
                 } catch (\JsonException $exception) {
                     throw new NizuApiException('NIZU returned invalid JSON.', 0, $exception);
@@ -106,11 +120,6 @@ final class NizuApiClient
                 throw new NizuApiException($message);
             }
 
-            $this->logger->warning('Retrying NIZU request', [
-                'method' => $method,
-                'status' => $status,
-                'attempt' => $attempt,
-            ]);
             usleep($attempt * 250_000);
         }
 
@@ -122,9 +131,7 @@ final class NizuApiClient
      */
     private function responseContainsLead(array $response): bool
     {
-        if (isset($response['success']) && $response['success'] === false) {
-            throw new NizuApiException('NIZU rejected the lead lookup.');
-        }
+        $this->assertNotFailed($response, 'lead lookup');
 
         if (
             is_array($response['data'] ?? null)
@@ -150,5 +157,96 @@ final class NizuApiClient
         throw new NizuApiException(
             'NIZU lead lookup returned no recognizable result collection.',
         );
+    }
+
+    /**
+     * @param array<string, mixed> $response
+     */
+    private function assertNotFailed(array $response, string $action): void
+    {
+        if (!isset($response['success']) || $response['success'] !== false) {
+            return;
+        }
+
+        $reason = $this->responseErrorMessage($response);
+        $diagnostic = $reason === null ? $this->responseDiagnostic($response) : null;
+
+        throw new NizuApiException(
+            $reason !== null
+                ? "NIZU rejected the {$action}: {$reason}"
+                : "NIZU rejected the {$action}" . $diagnostic,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $response
+     */
+    private function responseErrorMessage(array $response): ?string
+    {
+        foreach (['message', 'error', 'detail'] as $key) {
+            if (is_string($response[$key] ?? null) && $response[$key] !== '') {
+                return $response[$key];
+            }
+        }
+
+        $data = $response['data'] ?? null;
+        if (!is_array($data)) {
+            return null;
+        }
+
+        foreach (['message', 'error', 'detail'] as $key) {
+            if (is_string($data[$key] ?? null) && $data[$key] !== '') {
+                return $data[$key];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $response
+     */
+    private function createdClientId(array $response): ?string
+    {
+        $data = $response['data'] ?? null;
+        if (is_array($data)) {
+            if (is_scalar($data['id'] ?? null)) {
+                return (string) $data['id'];
+            }
+
+            $content = $data['content'] ?? null;
+            if (is_array($content) && isset($content[0]) && is_array($content[0])) {
+                return is_scalar($content[0]['id'] ?? null)
+                    ? (string) $content[0]['id']
+                    : null;
+            }
+        }
+
+        return is_scalar($response['id'] ?? null) ? (string) $response['id'] : null;
+    }
+
+    /**
+     * @param array<string, mixed> $response
+     */
+    private function responseDiagnostic(array $response): string
+    {
+        $parts = [];
+
+        foreach ($response as $key => $value) {
+            if (in_array($key, ['token', 'password', 'secret'], true)) {
+                continue;
+            }
+
+            if (is_scalar($value) || $value === null) {
+                $parts[] = $key . '=' . (string) $value;
+                continue;
+            }
+
+            if (is_array($value)) {
+                $parts[] = $key . '_keys=' . implode(',', array_keys($value));
+            }
+        }
+
+        return $parts === [] ? '.' : ' (' . implode('; ', $parts) . ').';
     }
 }
